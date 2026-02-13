@@ -1,13 +1,14 @@
 /**
  * Fastify API Server — Entry Point
  *
- * Starts a Fastify server with CORS enabled and transaction routes registered.
+ * Starts a Fastify server with CORS, rate limiting, and transaction routes.
  * Also exports a Vercel serverless handler for deployment.
  */
 
 import "dotenv/config";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
+import rateLimit from "@fastify/rate-limit";
 import { txRoutes } from "./routes/tx.js";
 
 // ----- Create Fastify instance -----
@@ -20,6 +21,11 @@ const app = Fastify({
 await app.register(cors, {
   origin: true, // Allow all origins in dev; configure for production
   methods: ["GET", "POST"],
+});
+
+// Register rate limiting plugin (applied per-route via route config)
+await app.register(rateLimit, {
+  global: false, // Don't apply globally — only to routes that opt-in
 });
 
 // Register transaction routes

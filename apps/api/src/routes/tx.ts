@@ -1,11 +1,17 @@
 /**
  * Transaction routes for the Fastify API.
  *
- * POST /tx/encrypt  — Encrypt & store a payload using envelope encryption
- * GET  /tx/:id      — Retrieve an encrypted record by ID
- * POST /tx/:id/decrypt — Decrypt and return the original payload
+ * POST /tx/encrypt     — Encrypt & store a payload using envelope encryption
+ * GET  /tx/:id         — Retrieve an encrypted record by ID
+ * POST /tx/:id/decrypt — Decrypt and return the original payload (rate-limited)
  *
  * Storage is an in-memory Map (non-persistent, suitable for demo/dev).
+ *
+ * Security features:
+ *   - Key versioning: supports multiple master keys for rotation
+ *   - AAD: partyId is cryptographically bound to ciphertext
+ *   - Rate limiting: decrypt endpoint is limited to 5 req/min per IP
+ *   - Structured logging: decryption failures are logged with context
  */
 
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
@@ -13,22 +19,19 @@ import { randomUUID } from "node:crypto";
 import {
   envelopeEncrypt,
   envelopeDecrypt,
+  buildKeyRegistry,
   type TxSecureRecord,
-  type EncryptInput,
 } from "@repo/crypto";
 
 // In-memory store — records are lost on server restart
 const store = new Map<string, TxSecureRecord>();
 
 /**
- * Get the MASTER_KEY from environment, throw if missing.
+ * Build the master key registry from environment variables.
+ * Supports MASTER_KEY_V1, MASTER_KEY_V2, ... or fallback to MASTER_KEY.
  */
-function getMasterKey(): string {
-  const key = process.env.MASTER_KEY;
-  if (!key) {
-    throw new Error("MASTER_KEY environment variable is not set");
-  }
-  return key;
+function getKeyRegistry() {
+  return buildKeyRegistry(process.env as Record<string, string | undefined>);
 }
 
 // ----- Request/Response schemas -----
@@ -50,6 +53,9 @@ export async function txRoutes(app: FastifyInstance): Promise<void> {
    *
    * Accepts a partyId and JSON payload, performs envelope encryption,
    * stores the record, and returns the full TxSecureRecord.
+   *
+   * Uses the latest master key version for encryption.
+   * Binds partyId as AAD (Additional Authenticated Data).
    */
   app.post<{ Body: EncryptBody }>(
     "/tx/encrypt",
@@ -67,10 +73,11 @@ export async function txRoutes(app: FastifyInstance): Promise<void> {
 
       try {
         const id = randomUUID();
-        const masterKey = getMasterKey();
+        const registry = getKeyRegistry();
 
         // Perform envelope encryption: DEK encrypts payload, MK wraps DEK
-        const record = envelopeEncrypt(masterKey, id, partyId.trim(), payload);
+        // partyId is bound as AAD to both layers
+        const record = envelopeEncrypt(registry, id, partyId.trim(), payload);
 
         // Store in memory
         store.set(id, record);
@@ -108,9 +115,22 @@ export async function txRoutes(app: FastifyInstance): Promise<void> {
    *
    * Decrypts the stored record and returns the original payload.
    * This unwraps the DEK using the Master Key, then decrypts the payload with the DEK.
+   *
+   * Security:
+   *   - Rate limited: max 5 requests per minute per IP
+   *   - Structured logging on failure (txId, IP, mk_version, timestamp)
+   *   - Sensitive payloads are NEVER logged
    */
   app.post<{ Params: IdParam }>(
     "/tx/:id/decrypt",
+    {
+      config: {
+        rateLimit: {
+          max: 5,
+          timeWindow: "1 minute",
+        },
+      },
+    },
     async (request: FastifyRequest<{ Params: IdParam }>, reply: FastifyReply) => {
       const { id } = request.params;
 
@@ -120,10 +140,11 @@ export async function txRoutes(app: FastifyInstance): Promise<void> {
       }
 
       try {
-        const masterKey = getMasterKey();
+        const registry = getKeyRegistry();
 
         // Envelope decryption: unwrap DEK with MK, then decrypt payload with DEK
-        const payload = envelopeDecrypt(masterKey, record);
+        // AAD (partyId) is verified during both decryption steps
+        const payload = envelopeDecrypt(registry, record);
 
         return reply.send({
           id: record.id,
@@ -132,6 +153,20 @@ export async function txRoutes(app: FastifyInstance): Promise<void> {
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : "Decryption failed";
+
+        // Structured security logging — log context for audit, NEVER log payloads
+        request.log.warn(
+          {
+            event: "decryption_failure",
+            txId: id,
+            ip: request.ip,
+            mk_version: record.mk_version,
+            timestamp: new Date().toISOString(),
+            error: message,
+          },
+          "Decryption failed for transaction"
+        );
+
         return reply.status(500).send({ error: message });
       }
     }

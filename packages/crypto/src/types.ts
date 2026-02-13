@@ -41,8 +41,8 @@ export type TxSecureRecord = {
   /** Encryption algorithm identifier */
   alg: "AES-256-GCM";
 
-  /** Master key version used for wrapping */
-  mk_version: 1;
+  /** Master key version used for wrapping — supports key rotation */
+  mk_version: number;
 };
 
 /** Input for the encrypt operation */
