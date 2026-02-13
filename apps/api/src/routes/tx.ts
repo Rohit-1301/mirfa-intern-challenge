@@ -91,6 +91,23 @@ export async function txRoutes(app: FastifyInstance): Promise<void> {
   );
 
   /**
+   * GET /tx
+   *
+   * Lists all stored transaction records (summary only).
+   * Returns id, partyId, createdAt, and alg for each record.
+   */
+  app.get(
+    "/tx",
+    async (_request, reply) => {
+      const records = Array.from(store.values())
+        .map(({ id, partyId, createdAt, alg }) => ({ id, partyId, createdAt, alg }))
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+      return reply.send(records);
+    }
+  );
+
+  /**
    * GET /tx/:id
    *
    * Retrieves the encrypted record by its ID.
