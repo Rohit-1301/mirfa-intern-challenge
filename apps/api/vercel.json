@@ -1,5 +1,6 @@
 {
   "version": 2,
   "installCommand": "pnpm install",
-  "buildCommand": "cd ../../packages/crypto && pnpm build && cd ../../apps/api && pnpm build"
+  "buildCommand": "cd ../../packages/crypto && pnpm build && cd ../../apps/api && pnpm build",
+  "outputDirectory": "."
 }
