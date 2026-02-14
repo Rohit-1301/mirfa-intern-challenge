@@ -1,6 +1,8 @@
 {
   "version": 2,
-  "outputDirectory": "public",
-  "installCommand": "pnpm install",
-  "buildCommand": "pnpm vercel-build"
+  "functions": {
+    "api/*.js": {
+      "runtime": "@vercel/node@3.0.0"
+    }
+  }
 }
