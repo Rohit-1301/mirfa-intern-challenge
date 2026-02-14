@@ -8,7 +8,8 @@
     "build": "tsc",
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "vercel-build": "cd ../../packages/crypto && pnpm build && cd ../../apps/api && pnpm build"
   },
   "dependencies": {
     "@repo/crypto": "workspace:*",
