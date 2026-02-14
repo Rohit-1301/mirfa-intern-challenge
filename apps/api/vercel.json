@@ -1,4 +1,6 @@
 {
   "version": 2,
-  "outputDirectory": "public"
+  "outputDirectory": "public",
+  "installCommand": "pnpm install",
+  "buildCommand": "pnpm vercel-build"
 }
