@@ -38,12 +38,15 @@ app.get("/health", async () => ({ status: "ok" }));
 
 const PORT = Number(process.env.PORT) || 3001;
 
-try {
-  await app.listen({ port: PORT, host: "0.0.0.0" });
-  console.log(`🚀 API server running at http://localhost:${PORT}`);
-} catch (err) {
-  app.log.error(err);
-  process.exit(1);
+// Only start server in local development (not in Vercel serverless)
+if (process.env.VERCEL !== "1") {
+  try {
+    await app.listen({ port: PORT, host: "0.0.0.0" });
+    console.log(`🚀 API server running at http://localhost:${PORT}`);
+  } catch (err) {
+    app.log.error(err);
+    process.exit(1);
+  }
 }
 
 // ----- Vercel serverless handler export -----
